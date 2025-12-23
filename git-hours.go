@@ -38,7 +38,7 @@ func main() {
 		"log",
 		"--reverse",
 		"--date=iso-local",
-		`--pretty=format:%ad %an %s`,
+		`--pretty=format:%ad|%cd|%an|%s`,
 		fmt.Sprintf(`--author=%s`, author),
 		fmt.Sprintf(`--since="%s"`, *sincePtr),
 		fmt.Sprintf(`--before="%s"`, *beforePtr),
@@ -79,19 +79,44 @@ func main() {
 
 	var beforeCommitTime time.Time
 	for n, l := range strings.Split(stdout.String(), "\n") {
-		getTime := findISO8601.FindString(l)
-		if getTime == "" {
+		// Expecting format: %ad|%cd|%an|%s
+		parts := strings.SplitN(l, "|", 4)
+		if len(parts) < 4 {
 			continue
 		}
-		rfctime, err := ISO8601ToRFC3339(getTime)
+		authorDateStr := parts[0]
+		commitDateStr := parts[1]
+		// Parse author date
+		authorRFC, err := ISO8601ToRFC3339(findISO8601.FindString(authorDateStr))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
+			continue
 		}
-		t, err := time.Parse(time.RFC3339, rfctime)
+		authorTime, err := time.Parse(time.RFC3339, authorRFC)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
+			continue
 		}
-		elapsed := t.Sub(beforeCommitTime)
+		// Parse commit date
+		commitRFC, err := ISO8601ToRFC3339(findISO8601.FindString(commitDateStr))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			continue
+		}
+		commitTime, err := time.Parse(time.RFC3339, commitRFC)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			continue
+		}
+		elapsed := authorTime.Sub(beforeCommitTime)
+		// Fallback: if elapsed is negative, use commit date instead
+		if elapsed < 0 {
+			elapsed = commitTime.Sub(beforeCommitTime)
+			// If still negative, clamp to zero
+			if elapsed < 0 {
+				elapsed = 0
+			}
+		}
 		// Clamp negative elapsed times to zero.
 		// This handles cherry-picked or rebased commits where the author date goes backwards in time,
 		// preventing negative durations from being added to the total.
@@ -113,7 +138,7 @@ func main() {
 		} else {
 			total += h
 		}
-		beforeCommitTime = t
+		beforeCommitTime = authorTime
 	}
 	fmt.Printf("From %q to %q : %s\n", *sincePtr, *beforePtr, total)
 }
