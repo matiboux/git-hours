@@ -97,20 +97,20 @@ func main() {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			continue
 		}
-		// Parse commit date
-		commitRFC, err := ISO8601ToRFC3339(findISO8601.FindString(commitDateStr))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-			continue
-		}
-		commitTime, err := time.Parse(time.RFC3339, commitRFC)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-			continue
-		}
 		elapsed := authorTime.Sub(beforeCommitTime)
 		// Fallback: if elapsed is negative, use commit date instead
 		if elapsed < 0 {
+			// Parse commit date
+			commitRFC, err := ISO8601ToRFC3339(findISO8601.FindString(commitDateStr))
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%v\n", err)
+				continue
+			}
+			commitTime, err := time.Parse(time.RFC3339, commitRFC)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%v\n", err)
+				continue
+			}
 			elapsed = commitTime.Sub(beforeCommitTime)
 			// If still negative, clamp to zero
 			if elapsed < 0 {
