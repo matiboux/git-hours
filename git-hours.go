@@ -48,11 +48,22 @@ func main() {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
-	if stderr.String() != "" {
-		fmt.Fprintf(os.Stderr, stderr.String())
+	if err != nil {
+		// Check if the error is because git is not installed
+		if ee, ok := err.(*exec.Error); ok && ee.Err == exec.ErrNotFound {
+			fmt.Fprintln(os.Stderr, "Error: git is not installed or not found in PATH.")
+			os.Exit(1)
+		}
+		// If stderr has output, print it
+		if stderr.String() != "" {
+			fmt.Fprintf(os.Stderr, stderr.String())
+		} else {
+			// Otherwise, print the error itself
+			fmt.Fprintf(os.Stderr, "Error running git: %v\n", err)
+		}
 		os.Exit(1)
 	}
-	if err != nil {
+	if stderr.String() != "" {
 		fmt.Fprintf(os.Stderr, stderr.String())
 		os.Exit(1)
 	}
