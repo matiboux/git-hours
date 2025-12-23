@@ -17,6 +17,8 @@ func main() {
 	authorPtr := flag.String("author", "", "author name")            // git option : --author="\(Adam\)\|\(Jon\)"
 	durationPtr := flag.String("duration", "1h", "git log duration") // default "1h"
 	debugPtr := flag.Bool("debug", false, "debug mode")
+	verbosePtr := flag.Bool("v", false, "verbose output (same as --verbose)")
+	verboseLongPtr := flag.Bool("verbose", false, "verbose output (same as -v)")
 	helpPtr := flag.Bool("help", false, "print help")
 	flag.Parse()
 	if *helpPtr {
