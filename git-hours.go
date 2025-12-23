@@ -131,7 +131,7 @@ func main() {
 			if n != 0 {
 				fmt.Fprintf(os.Stdout, "%s (+%s) >\n", elapsed, totalDelta)
 			}
-			fmt.Println("\t", l)
+			fmt.Println("\t", strings.ReplaceAll(l, "|", " "))
 		}
 		total += totalDelta
 		beforeCommitTime = authorTime
