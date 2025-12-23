@@ -117,21 +117,23 @@ func main() {
 				elapsed = 0
 			}
 		}
-		if *debugPtr {
-			if n != 0 {
-				fmt.Println(elapsed, ">")
-			}
-			fmt.Println("\t", l)
-		}
+		var totalDelta time.Duration
 		h, err := time.ParseDuration(*durationPtr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 		}
 		if elapsed < h*2 {
-			total += elapsed
+			totalDelta = elapsed
 		} else {
-			total += h
+			totalDelta = h
 		}
+		if *debugPtr {
+			if n != 0 {
+				fmt.Fprintf(os.Stdout, "%s (+%s) >\n", elapsed, totalDelta)
+			}
+			fmt.Println("\t", l)
+		}
+		total += totalDelta
 		beforeCommitTime = authorTime
 	}
 	fmt.Printf("From %q to %q : %s\n", *sincePtr, *beforePtr, total)
