@@ -117,12 +117,6 @@ func main() {
 				elapsed = 0
 			}
 		}
-		// Clamp negative elapsed times to zero.
-		// This handles cherry-picked or rebased commits where the author date goes backwards in time,
-		// preventing negative durations from being added to the total.
-		if elapsed < 0 {
-			elapsed = 0
-		}
 		if *debugPtr {
 			if n != 0 {
 				fmt.Println(elapsed, ">")
