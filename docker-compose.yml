@@ -1,0 +1,12 @@
+version: '3.8'
+services:
+  git-hours:
+    build: .
+    image: git-hours:latest
+    container_name: git-hours
+    working_dir: /repo
+    volumes:
+      - .:/repo
+    entrypoint: ["git-hours"]
+    # Example command, override as needed
+    command: ["--help"]
