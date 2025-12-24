@@ -1,0 +1,9 @@
+services:
+  git-hours:
+    build: .
+    image: git-hours:latest
+    container_name: git-hours
+    working_dir: /repo
+    volumes:
+      - .:/repo
+    entrypoint: ["git-hours"]
