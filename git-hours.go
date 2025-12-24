@@ -50,7 +50,6 @@ func main() {
 		gitArgs = append(gitArgs, "--walk-reflogs")
 	}
 	gitArgs = append(gitArgs,
-		"--reverse",
 		"--date=iso-local",
 		`--pretty=format:%ad|%cd|%an|%s`,
 		fmt.Sprintf(`--author=%s`, author),
@@ -95,7 +94,12 @@ func main() {
 	var beforeCommitTime time.Time
 	var activePeriods []ActivePeriod
 	var currentPeriod *ActivePeriod
-	for n, l := range strings.Split(stdout.String(), "\n") {
+	lines := strings.Split(stdout.String(), "\n")
+	// Reverse the lines to process from oldest to newest
+	for i, j := 0, len(lines)-1; i < j; i, j = i+1, j-1 {
+		lines[i], lines[j] = lines[j], lines[i]
+	}
+	for n, l := range lines {
 		// Expecting format: %ad|%cd|%an|%s
 		parts := strings.SplitN(l, "|", 4)
 		if len(parts) < 4 {
