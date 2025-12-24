@@ -52,7 +52,11 @@ func main() {
 	gitArgs = append(gitArgs,
 		"--date=iso-local",
 		`--pretty=format:%ad|%cd|%an|%s`,
-		fmt.Sprintf(`--author=%s`, author),
+	)
+	if *authorPtr != "" {
+		gitArgs = append(gitArgs, fmt.Sprintf(`--author=%s`, author))
+	}
+	gitArgs = append(gitArgs,
 		fmt.Sprintf(`--since="%s"`, *sincePtr),
 		fmt.Sprintf(`--before="%s"`, *beforePtr),
 	)
