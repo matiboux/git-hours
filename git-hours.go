@@ -146,6 +146,11 @@ func main() {
 		return commitLines[i].authorTime.Before(commitLines[j].authorTime)
 	})
 
+	duration, err := time.ParseDuration(*durationPtr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+	}
+
 	var beforeCommitTime time.Time
 	var activePeriods []ActivePeriod
 	var currentPeriod *ActivePeriod
@@ -192,18 +197,14 @@ func main() {
 			}
 		}
 		var totalDelta time.Duration
-		h, err := time.ParseDuration(*durationPtr)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-		}
-		if elapsed < h*2 {
+		if elapsed < duration*2 {
 			totalDelta = elapsed
 		} else {
-			totalDelta = h
+			totalDelta = duration
 		}
 		if *periodsPtr {
 			// Extend or start an active period
-			if elapsed < h*2 && !usedFallback {
+			if elapsed < duration*2 && !usedFallback {
 				if currentPeriod == nil {
 					currentPeriod = &ActivePeriod{Start: authorTime, End: authorTime, Duration: 0}
 				} else {
