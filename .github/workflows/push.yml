@@ -1,0 +1,264 @@
+name: Push CD
+
+# Expected secrets:
+# - DHCR_TOKEN
+# - CUSTOM_CR_TOKEN
+
+# Expected variables:
+# - DHCR_ENABLED
+# - DHCR_USERNAME
+# - GHCR_ENABLED
+# - CUSTOM_CR_ENABLED
+# - CUSTOM_CR_URL
+# - CUSTOM_CR_USERNAME
+# - CUSTOM_CR_NAMESPACE
+# - IMAGES_PREFIX
+
+on:
+
+  # Run on push on production branches
+  push:
+    branches:
+      # Production
+      - main
+    paths:
+      # CI files
+      - '.github/workflows/push.yml'
+      - 'docker-compose.yml'
+      - '.env'
+      # Application files
+      - 'chown-command.sh'
+      - 'Dockerfile'
+
+  # Run on manual triggers
+  workflow_dispatch:
+    inputs:
+      deploy_env:
+        description: 'Deployment environment (e.g. prod, staging)'
+        type: string
+
+# Set default GITHUB_TOKEN permissions for the workflow
+permissions:
+  contents: read
+
+# Set workflow concurrency rules
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Set environment variables for the workflow
+env:
+  DHCR_ENABLED: ${{ vars.DHCR_ENABLED == 'true' || (!vars.DHCR_ENABLED && vars.DHCR_USERNAME != '') }}
+  GHCR_ENABLED: ${{ vars.GHCR_ENABLED == 'true' }}
+  CUSTOM_CR_ENABLED: ${{ vars.CUSTOM_CR_ENABLED == 'true' || (!vars.CUSTOM_CR_ENABLED && vars.CUSTOM_CR_URL != '') }}
+  IMAGES_PREFIX: ${{ vars.IMAGES_PREFIX }}
+
+jobs:
+
+  # Build & Push job
+  push:
+    name: Build & Push
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Set GITHUB_TOKEN permissions for the job
+    permissions:
+      packages: write
+
+    steps:
+
+      # Initialization steps
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Preparation steps
+
+      - name: Set DEPLOY_ENV
+        env:
+          GITHUB_REF: ${{ github.ref }}
+          DEPLOY_ENV: ${{ github.event.inputs.deploy_env }}
+        run: |
+          # Set DEPLOY_ENV environment variable
+
+          if [ -n "${DEPLOY_ENV}" ]; then
+            # Sanitize DEPLOY_ENV value:
+            # - Strip leading & trailing whitespace
+            # - Remove punctuation
+            # - Convert to uppercase
+            # - Replace spaces with underscores
+            DEPLOY_ENV="$(
+              echo "${DEPLOY_ENV}" \
+              | xargs \
+              | tr -d '[:punct:]' \
+              | tr '[:lower:] ' '[:upper:]_'
+            )"
+          elif [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+            DEPLOY_ENV="PROD"
+          else
+            DEPLOY_ENV="STAGING"
+          fi
+
+          echo "Set DEPLOY_ENV to '${DEPLOY_ENV}'"
+          echo 'DEPLOY_ENV<<GITHUB_ENV_EOF' >> $GITHUB_ENV
+          echo "${DEPLOY_ENV}" >> $GITHUB_ENV
+          echo 'GITHUB_ENV_EOF' >> $GITHUB_ENV
+
+      - name: Set Docker Hub registry credentials
+        if: env.DHCR_ENABLED == 'true'
+        env:
+          REGISTRY_URL: docker.io
+          REGISTRY_USERNAME: ${{ vars.DHCR_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.DHCR_TOKEN }}
+          REGISTRY_NAMESPACE: ${{ vars.DHCR_USERNAME }}
+          IMAGES_PREFIX: ${{ env.IMAGES_PREFIX }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          REPOSITORY_PATH: ${{ github.repository }}
+        run: |
+          # Set Docker Hub registry credentials
+
+          # Load helper scripts
+          . ./.github/workflows/scripts/set_github_env.sh
+          . ./.github/workflows/scripts/set_registry_credentials.sh
+
+          set_registry_credentials \
+            'DHCR_URL' \
+            'DHCR_IMAGES_PREFIX' \
+            'DHCR_USERNAME' \
+            'DHCR_TOKEN'
+
+      - name: Set GitHub registry credentials
+        if: env.GHCR_ENABLED == 'true'
+        env:
+          REGISTRY_URL: ghcr.io
+          REGISTRY_USERNAME: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_NAMESPACE: ${{ github.repository_owner }}
+          IMAGES_PREFIX: ${{ env.IMAGES_PREFIX }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          REPOSITORY_PATH: ${{ github.repository }}
+        run: |
+          # Set GitHub registry credentials
+
+          # Load helper scripts
+          . ./.github/workflows/scripts/set_github_env.sh
+          . ./.github/workflows/scripts/set_registry_credentials.sh
+
+          set_registry_credentials \
+            'GHCR_URL' \
+            'GHCR_IMAGES_PREFIX' \
+            'GHCR_USERNAME' \
+            'GHCR_TOKEN'
+
+      - name: Set custom registry credentials
+        if: env.CUSTOM_CR_ENABLED == 'true'
+        env:
+          REGISTRY_URL: ${{ vars.CUSTOM_CR_URL }}
+          REGISTRY_USERNAME: ${{ vars.CUSTOM_CR_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.CUSTOM_CR_TOKEN }}
+          REGISTRY_NAMESPACE: ${{ vars.CUSTOM_CR_NAMESPACE }}
+          IMAGES_PREFIX: ${{ env.IMAGES_PREFIX }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          REPOSITORY_PATH: ${{ github.repository }}
+        run: |
+          # Set custom registry credentials
+
+          # Load helper scripts
+          . ./.github/workflows/scripts/set_github_env.sh
+          . ./.github/workflows/scripts/set_registry_credentials.sh
+
+          set_registry_credentials \
+            'CUSTOM_CR_URL' \
+            'CUSTOM_CR_IMAGES_PREFIX' \
+            'CUSTOM_CR_USERNAME' \
+            'CUSTOM_CR_TOKEN'
+
+      # Execution steps
+
+      - name: Login to Docker Hub registry
+        if: env.DHCR_URL
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DHCR_URL }}
+          username: ${{ env.DHCR_USERNAME }}
+          password: ${{ env.DHCR_TOKEN }}
+
+      - name: Login to GitHub registry
+        if: env.GHCR_URL
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GHCR_URL }}
+          username: ${{ env.GHCR_USERNAME }}
+          password: ${{ env.GHCR_TOKEN }}
+
+      - name: Login to custom registry
+        if: env.CUSTOM_CR_URL
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.CUSTOM_CR_URL }}
+          username: ${{ env.CUSTOM_CR_USERNAME }}
+          password: ${{ env.CUSTOM_CR_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set Docker image tags
+        env:
+          DEPLOY_ENV: ${{ env.DEPLOY_ENV }}
+          DHCR_IMAGES_PREFIX: ${{ env.DHCR_IMAGES_PREFIX }}
+          GHCR_IMAGES_PREFIX: ${{ env.GHCR_IMAGES_PREFIX }}
+          CUSTOM_CR_IMAGES_PREFIX: ${{ env.CUSTOM_CR_IMAGES_PREFIX }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          # Set Docker image tags
+
+          IMAGE_TAGS=''
+
+          # Include image tag for Docker Hub registry
+          if [ -n "${DHCR_IMAGES_PREFIX}" ]; then
+            IMAGE_TAGS="${IMAGE_TAGS},${DHCR_IMAGES_PREFIX}:${GITHUB_SHA}"
+            if [ "${DEPLOY_ENV}" = "PROD" ]; then
+              IMAGE_TAGS="${IMAGE_TAGS},${DHCR_IMAGES_PREFIX}:latest"
+            fi
+          fi
+
+          # Include image tag for GitHub registry
+          if [ -n "${GHCR_IMAGES_PREFIX}" ]; then
+            IMAGE_TAGS="${IMAGE_TAGS},${GHCR_IMAGES_PREFIX}:${GITHUB_SHA}"
+            if [ "${DEPLOY_ENV}" = "PROD" ]; then
+              IMAGE_TAGS="${IMAGE_TAGS},${GHCR_IMAGES_PREFIX}:latest"
+            fi
+          fi
+
+          # Include image tag for custom registry
+          if [ -n "${CUSTOM_CR_IMAGES_PREFIX}" ]; then
+            IMAGE_TAGS="${IMAGE_TAGS},${CUSTOM_CR_IMAGES_PREFIX}:${GITHUB_SHA}"
+            if [ "${DEPLOY_ENV}" = "PROD" ]; then
+              IMAGE_TAGS="${IMAGE_TAGS},${CUSTOM_CR_IMAGES_PREFIX}:latest"
+            fi
+          fi
+
+          # Remove leading comma
+          IMAGE_TAGS="${IMAGE_TAGS#,}"
+
+          echo 'Set Docker image tags'
+          echo 'IMAGE_TAGS<<GITHUB_ENV_EOF' >> $GITHUB_ENV
+          echo "${IMAGE_TAGS}" >> $GITHUB_ENV
+          echo 'GITHUB_ENV_EOF' >> $GITHUB_ENV
+
+      - name: Build & push Docker image
+        uses: docker/build-push-action@v6
+        env:
+          DOCKER_BUILD_CHECKS_ANNOTATIONS: true
+          DOCKER_BUILD_SUMMARY: true
+          DOCKER_BUILD_RECORD_UPLOAD: false
+        with:
+          tags: ${{ env.IMAGE_TAGS }}
+          context: .
+          file: ./Dockerfile
+          target: app_prod
+          platforms: linux/amd64,linux/arm64
+          push: true
