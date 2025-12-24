@@ -151,7 +151,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 	}
 
-	var beforeCommitTime time.Time
+	var beforeCommitTime *time.Time
 	var activePeriods []ActivePeriod
 	var currentPeriod *ActivePeriod
 	for _, cl := range commitLines {
@@ -174,42 +174,46 @@ func main() {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			continue
 		}
-		elapsed := authorTime.Sub(beforeCommitTime)
-		// Fallback: if elapsed is negative, use commit date instead
+		var elapsed *time.Duration
 		usedFallback := false
-		if elapsed < 0 {
-			usedFallback = true
-			// Parse commit date
-			commitRFC, err := ISO8601ToRFC3339(findISO8601.FindString(commitDateStr))
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "%v\n", err)
-				continue
+		if beforeCommitTime != nil {
+			elapsedValue := authorTime.Sub(*beforeCommitTime)
+			// Fallback: if elapsed is negative, use commit date instead
+			if elapsedValue < 0 {
+				usedFallback = true
+				// Parse commit date
+				commitRFC, err := ISO8601ToRFC3339(findISO8601.FindString(commitDateStr))
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "%v\n", err)
+					continue
+				}
+				commitTime, err := time.Parse(time.RFC3339, commitRFC)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "%v\n", err)
+					continue
+				}
+				elapsedValue = commitTime.Sub(*beforeCommitTime)
+				// If still negative, clamp to zero
+				if elapsedValue < 0 {
+					elapsedValue = 0
+				}
 			}
-			commitTime, err := time.Parse(time.RFC3339, commitRFC)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "%v\n", err)
-				continue
-			}
-			elapsed = commitTime.Sub(beforeCommitTime)
-			// If still negative, clamp to zero
-			if elapsed < 0 {
-				elapsed = 0
-			}
+			elapsed = &elapsedValue
 		}
 		var totalDelta time.Duration
-		if elapsed < duration*2 {
-			totalDelta = elapsed
+		if elapsed != nil && *elapsed < duration*2 {
+			totalDelta = *elapsed
 		} else {
 			totalDelta = duration
 		}
 		if *periodsPtr {
 			// Extend or start an active period
-			if elapsed < duration*2 && !usedFallback {
+			if elapsed != nil && *elapsed < duration*2 && !usedFallback {
 				if currentPeriod == nil {
 					currentPeriod = &ActivePeriod{Start: authorTime, End: authorTime, Duration: 0}
 				} else {
 					currentPeriod.End = authorTime
-					currentPeriod.Duration += elapsed
+					currentPeriod.Duration += *elapsed
 				}
 			} else {
 				// Close current period and start a new one
@@ -222,11 +226,15 @@ func main() {
 			}
 		}
 		if *debugPtr {
-			fmt.Fprintf(os.Stdout, "%s (+%s) >\n", elapsed, totalDelta)
+			if elapsed == nil {
+				fmt.Fprintf(os.Stdout, "N/A (+%s) >\n", totalDelta)
+			} else {
+				fmt.Fprintf(os.Stdout, "%s (+%s) >\n", *elapsed, totalDelta)
+			}
 			fmt.Println("\t", strings.ReplaceAll(l, "|", " "))
 		}
 		total += totalDelta
-		beforeCommitTime = authorTime
+		beforeCommitTime = &authorTime
 	}
 
 	// After loop, if verbose and period is open, close it
