@@ -149,7 +149,7 @@ func main() {
 	var beforeCommitTime time.Time
 	var activePeriods []ActivePeriod
 	var currentPeriod *ActivePeriod
-	for n, cl := range commitLines {
+	for _, cl := range commitLines {
 		l := cl.line
 		// Expecting format: %H|%ad|%cd|%an|%s
 		parts := strings.SplitN(l, "|", 5)
@@ -221,9 +221,7 @@ func main() {
 			}
 		}
 		if *debugPtr {
-			if n != 0 {
-				fmt.Fprintf(os.Stdout, "%s (+%s) >\n", elapsed, totalDelta)
-			}
+			fmt.Fprintf(os.Stdout, "%s (+%s) >\n", elapsed, totalDelta)
 			fmt.Println("\t", strings.ReplaceAll(l, "|", " "))
 		}
 		total += totalDelta
