@@ -43,11 +43,11 @@ func main() {
 		author = *authorPtr
 	}
 	gitArgs := []string{"--no-pager", "log"}
-	if *allBranchesPtr {
-		gitArgs = append(gitArgs, "--all")
-	}
 	if *reflogPtr {
 		gitArgs = append(gitArgs, "--walk-reflogs")
+	}
+	if *allBranchesPtr {
+		gitArgs = append(gitArgs, "--all")
 	}
 	gitArgs = append(gitArgs,
 		"--date=iso-local",
