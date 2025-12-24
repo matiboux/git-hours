@@ -1,4 +1,4 @@
-name: Check Proxy CI
+name: Check CI
 
 # GitHub variables: N/A
 
@@ -17,11 +17,11 @@ on:
       - dev
     paths:
       # CI/CD files
-      - '.github/workflows/check-proxy.yml'
+      - '.github/workflows/check.yml'
       - 'docker-compose.yml'
       - '.env'
       # Application files
-      - 'proxy/**'
+      - '**'
 
   # Run on manual triggers
   workflow_dispatch:
@@ -45,7 +45,7 @@ jobs:
 
     steps:
 
-      # Steps dependencies
+      # Initialization steps
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -63,9 +63,7 @@ jobs:
       - name: Build for production
         run: |
           # docker compose build
-          echo '::group::Build details'
           docker compose \
             -f ./docker-compose.yml \
             --env-file .env \
             build
-          echo '::endgroup::'
