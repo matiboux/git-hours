@@ -24,8 +24,7 @@ func main() {
 	authorPtr := flag.String("author", "", "author name")            // git option : --author="\(Adam\)\|\(Jon\)"
 	durationPtr := flag.String("duration", "1h", "git log duration") // default "1h"
 	debugPtr := flag.Bool("debug", false, "debug mode")
-	verbosePtr := flag.Bool("v", false, "verbose output (same as --verbose)")
-	verboseLongPtr := flag.Bool("verbose", false, "verbose output (same as -v)")
+	periodsPtr := flag.Bool("periods", false, "show list of active periods")
 	helpPtr := flag.Bool("help", false, "print help")
 	flag.Parse()
 	if *helpPtr {
@@ -140,7 +139,7 @@ func main() {
 		} else {
 			totalDelta = h
 		}
-		if *verbosePtr || *verboseLongPtr {
+		if *periodsPtr {
 			// Extend or start an active period
 			if elapsed < h*2 && !usedFallback {
 				if currentPeriod == nil {
@@ -151,7 +150,7 @@ func main() {
 				}
 			} else {
 				// Close current period and start a new one
-				if *verbosePtr || *verboseLongPtr {
+				if *periodsPtr {
 					if currentPeriod != nil {
 						activePeriods = append(activePeriods, *currentPeriod)
 					}
@@ -169,10 +168,10 @@ func main() {
 		beforeCommitTime = authorTime
 	}
 	// After loop, if verbose and period is open, close it
-	if (*verbosePtr || *verboseLongPtr) && currentPeriod != nil {
+	if *periodsPtr && currentPeriod != nil {
 		activePeriods = append(activePeriods, *currentPeriod)
 	}
-	if *verbosePtr || *verboseLongPtr {
+	if *periodsPtr {
 		fmt.Println("Active periods:")
 		for i, p := range activePeriods {
 			fmt.Printf("  %2d. %s -> %s : %s\n", i+1, p.Start.Format(time.RFC3339), p.End.Format(time.RFC3339), p.Duration)
