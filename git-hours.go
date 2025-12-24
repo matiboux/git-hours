@@ -10,6 +10,13 @@ import (
 	"time"
 )
 
+// ActivePeriod represents a contiguous period of activity
+type ActivePeriod struct {
+	Start    time.Time
+	End      time.Time
+	Duration time.Duration
+}
+
 func main() {
 	since, before := beforeMonth()
 	sincePtr := flag.String("since", since+" 00:00:00 "+timeZoneOffset(), "since(after) date")
@@ -80,6 +87,8 @@ func main() {
 	}
 
 	var beforeCommitTime time.Time
+	var activePeriods []ActivePeriod
+	var currentPeriod *ActivePeriod
 	for n, l := range strings.Split(stdout.String(), "\n") {
 		// Expecting format: %ad|%cd|%an|%s
 		parts := strings.SplitN(l, "|", 4)
@@ -101,7 +110,9 @@ func main() {
 		}
 		elapsed := authorTime.Sub(beforeCommitTime)
 		// Fallback: if elapsed is negative, use commit date instead
+		usedFallback := false
 		if elapsed < 0 {
+			usedFallback = true
 			// Parse commit date
 			commitRFC, err := ISO8601ToRFC3339(findISO8601.FindString(commitDateStr))
 			if err != nil {
@@ -129,6 +140,25 @@ func main() {
 		} else {
 			totalDelta = h
 		}
+		if *verbosePtr || *verboseLongPtr {
+			// Extend or start an active period
+			if elapsed < h*2 && !usedFallback {
+				if currentPeriod == nil {
+					currentPeriod = &ActivePeriod{Start: authorTime, End: authorTime, Duration: 0}
+				} else {
+					currentPeriod.End = authorTime
+					currentPeriod.Duration += elapsed
+				}
+			} else {
+				// Close current period and start a new one
+				if *verbosePtr || *verboseLongPtr {
+					if currentPeriod != nil {
+						activePeriods = append(activePeriods, *currentPeriod)
+					}
+					currentPeriod = &ActivePeriod{Start: authorTime, End: authorTime, Duration: 0}
+				}
+			}
+		}
 		if *debugPtr {
 			if n != 0 {
 				fmt.Fprintf(os.Stdout, "%s (+%s) >\n", elapsed, totalDelta)
@@ -137,6 +167,16 @@ func main() {
 		}
 		total += totalDelta
 		beforeCommitTime = authorTime
+	}
+	// After loop, if verbose and period is open, close it
+	if (*verbosePtr || *verboseLongPtr) && currentPeriod != nil {
+		activePeriods = append(activePeriods, *currentPeriod)
+	}
+	if *verbosePtr || *verboseLongPtr {
+		fmt.Println("Active periods:")
+		for i, p := range activePeriods {
+			fmt.Printf("  %2d. %s -> %s : %s\n", i+1, p.Start.Format(time.RFC3339), p.End.Format(time.RFC3339), p.Duration)
+		}
 	}
 	fmt.Printf("From %q to %q : %s\n", *sincePtr, *beforePtr, total)
 }
