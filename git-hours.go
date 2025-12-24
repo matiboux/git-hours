@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 )
@@ -42,75 +43,121 @@ func main() {
 	} else {
 		author = *authorPtr
 	}
-	gitArgs := []string{"--no-pager", "log"}
-	if *reflogPtr {
-		gitArgs = append(gitArgs, "--walk-reflogs")
+
+	// Helper to build git log args
+	buildGitArgs := func(extra ...string) []string {
+		args := []string{"--no-pager", "log"}
+		args = append(args, extra...)
+		args = append(args,
+			"--date=iso-local",
+			`--pretty=format:%H|%ad|%cd|%an|%s`,
+		)
+		if *authorPtr != "" {
+			args = append(args, fmt.Sprintf(`--author=%s`, author))
+		}
+		args = append(args,
+			fmt.Sprintf(`--since="%s"`, *sincePtr),
+			fmt.Sprintf(`--before="%s"`, *beforePtr),
+		)
+		return args
 	}
-	if *allBranchesPtr {
-		gitArgs = append(gitArgs, "--all")
-	}
-	gitArgs = append(gitArgs,
-		"--date=iso-local",
-		`--pretty=format:%ad|%cd|%an|%s`,
-	)
-	if *authorPtr != "" {
-		gitArgs = append(gitArgs, fmt.Sprintf(`--author=%s`, author))
-	}
-	gitArgs = append(gitArgs,
-		fmt.Sprintf(`--since="%s"`, *sincePtr),
-		fmt.Sprintf(`--before="%s"`, *beforePtr),
-	)
-	cmd := exec.Command("git", gitArgs...)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if err != nil {
-		// Check if the error is because git is not installed
-		if ee, ok := err.(*exec.Error); ok && ee.Err == exec.ErrNotFound {
-			fmt.Fprintln(os.Stderr, "Error: git is not installed or not found in PATH.")
+
+	// Map to deduplicate by commit hash
+	commitMap := make(map[string]string)
+	var allLines []string
+	var runLog = func(args []string) {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		cmd := exec.Command("git", args...)
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		if err != nil {
+			if ee, ok := err.(*exec.Error); ok && ee.Err == exec.ErrNotFound {
+				fmt.Fprintln(os.Stderr, "Error: git is not installed or not found in PATH.")
+				os.Exit(1)
+			}
+			if stderr.String() != "" {
+				fmt.Fprintf(os.Stderr, stderr.String())
+			} else {
+				fmt.Fprintf(os.Stderr, "Error running git: %v\n", err)
+			}
 			os.Exit(1)
 		}
-		// If stderr has output, print it
 		if stderr.String() != "" {
 			fmt.Fprintf(os.Stderr, stderr.String())
-		} else {
-			// Otherwise, print the error itself
-			fmt.Fprintf(os.Stderr, "Error running git: %v\n", err)
+			os.Exit(1)
 		}
-		os.Exit(1)
+		for _, l := range strings.Split(stdout.String(), "\n") {
+			if l == "" {
+				continue
+			}
+			hash := strings.SplitN(l, "|", 2)[0]
+			if _, exists := commitMap[hash]; !exists {
+				commitMap[hash] = l
+				allLines = append(allLines, l)
+			}
+		}
 	}
-	if stderr.String() != "" {
-		fmt.Fprintf(os.Stderr, stderr.String())
-		os.Exit(1)
+
+	if *allBranchesPtr && *reflogPtr {
+		runLog(buildGitArgs("--all"))
+		runLog(buildGitArgs("--walk-reflogs", "--all"))
+	} else if *allBranchesPtr {
+		runLog(buildGitArgs("--all"))
+	} else if *reflogPtr {
+		runLog(buildGitArgs("--walk-reflogs"))
+	} else {
+		runLog(buildGitArgs())
 	}
+
 	total, err := time.ParseDuration("0h")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
-	if stdout.String() == "" {
+	if len(allLines) == 0 {
 		fmt.Printf("From %q to %q : %s\n", *sincePtr, *beforePtr, total)
 		os.Exit(0)
 	}
 
+	// Sort allLines by author date (oldest to newest)
+	type commitLine struct {
+		line string
+		authorTime time.Time
+	}
+	var commitLines []commitLine
+	for _, l := range allLines {
+		parts := strings.SplitN(l, "|", 5)
+		if len(parts) < 5 {
+			continue
+		}
+		authorRFC, err := ISO8601ToRFC3339(findISO8601.FindString(parts[1]))
+		if err != nil {
+			continue
+		}
+		authorTime, err := time.Parse(time.RFC3339, authorRFC)
+		if err != nil {
+			continue
+		}
+		commitLines = append(commitLines, commitLine{l, authorTime})
+	}
+	sort.Slice(commitLines, func(i, j int) bool {
+		return commitLines[i].authorTime.Before(commitLines[j].authorTime)
+	})
+
 	var beforeCommitTime time.Time
 	var activePeriods []ActivePeriod
 	var currentPeriod *ActivePeriod
-	lines := strings.Split(stdout.String(), "\n")
-	// Reverse the lines to process from oldest to newest
-	for i, j := 0, len(lines)-1; i < j; i, j = i+1, j-1 {
-		lines[i], lines[j] = lines[j], lines[i]
-	}
-	for n, l := range lines {
-		// Expecting format: %ad|%cd|%an|%s
-		parts := strings.SplitN(l, "|", 4)
-		if len(parts) < 4 {
+	for n, cl := range commitLines {
+		l := cl.line
+		// Expecting format: %H|%ad|%cd|%an|%s
+		parts := strings.SplitN(l, "|", 5)
+		if len(parts) < 5 {
 			continue
 		}
-		authorDateStr := parts[0]
-		commitDateStr := parts[1]
+		authorDateStr := parts[1]
+		commitDateStr := parts[2]
 		// Parse author date
 		authorRFC, err := ISO8601ToRFC3339(findISO8601.FindString(authorDateStr))
 		if err != nil {
@@ -182,6 +229,7 @@ func main() {
 		total += totalDelta
 		beforeCommitTime = authorTime
 	}
+
 	// After loop, if verbose and period is open, close it
 	if *periodsPtr && currentPeriod != nil {
 		activePeriods = append(activePeriods, *currentPeriod)
@@ -192,5 +240,6 @@ func main() {
 			fmt.Printf("  %2d. %s -> %s : %s\n", i+1, p.Start.Format(time.RFC3339), p.End.Format(time.RFC3339), p.Duration)
 		}
 	}
+
 	fmt.Printf("From %q to %q : %s\n", *sincePtr, *beforePtr, total)
 }
