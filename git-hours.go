@@ -26,6 +26,7 @@ func main() {
 	debugPtr := flag.Bool("debug", false, "debug mode")
 	periodsPtr := flag.Bool("periods", false, "show list of active periods")
 	helpPtr := flag.Bool("help", false, "print help")
+	allBranchesPtr := flag.Bool("all", false, "include all branches in git log")
 	flag.Parse()
 	if *helpPtr {
 		flag.PrintDefaults()
@@ -40,10 +41,11 @@ func main() {
 	} else {
 		author = *authorPtr
 	}
-	cmd := exec.Command(
-		"git",
-		"--no-pager",
-		"log",
+	gitArgs := []string{"--no-pager", "log"}
+	if *allBranchesPtr {
+		gitArgs = append(gitArgs, "--all")
+	}
+	gitArgs = append(gitArgs,
 		"--reverse",
 		"--date=iso-local",
 		`--pretty=format:%ad|%cd|%an|%s`,
@@ -51,6 +53,7 @@ func main() {
 		fmt.Sprintf(`--since="%s"`, *sincePtr),
 		fmt.Sprintf(`--before="%s"`, *beforePtr),
 	)
+	cmd := exec.Command("git", gitArgs...)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
