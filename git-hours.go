@@ -27,6 +27,7 @@ func main() {
 	periodsPtr := flag.Bool("periods", false, "show list of active periods")
 	helpPtr := flag.Bool("help", false, "print help")
 	allBranchesPtr := flag.Bool("all", false, "include all branches in git log")
+	reflogPtr := flag.Bool("reflog", false, "walk reflog entries in git log")
 	flag.Parse()
 	if *helpPtr {
 		flag.PrintDefaults()
@@ -44,6 +45,9 @@ func main() {
 	gitArgs := []string{"--no-pager", "log"}
 	if *allBranchesPtr {
 		gitArgs = append(gitArgs, "--all")
+	}
+	if *reflogPtr {
+		gitArgs = append(gitArgs, "--walk-reflogs")
 	}
 	gitArgs = append(gitArgs,
 		"--reverse",
